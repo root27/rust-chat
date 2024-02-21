@@ -28,7 +28,6 @@ struct Client {
 }
 
 
-
 fn server(messages: Receiver<Message>){
 
     let mut  clients = HashMap::new();
@@ -67,6 +66,12 @@ fn server(messages: Receiver<Message>){
 
                 let address = client.peer_addr().unwrap();
 
+
+
+                println!("Received message from client {address} : {:?}", data);
+
+
+           
                 for (client_address, client) in clients.iter() {
 
                     if client_address != &address {
@@ -77,24 +82,13 @@ fn server(messages: Receiver<Message>){
 
                 }
 
-             
-
             }
-
 
         }
 
     }
 
-
-
-  
-
-
 }
-
-
-
 
 
 
@@ -115,9 +109,13 @@ fn client(mut stream: Arc<TcpStream>, message: Sender<Message>) -> Result<(),()>
 
     })?;
 
-
     
-    let mut buffer = [0; 1024];
+    let mut buffer= Vec::new();
+
+    buffer.resize(1024, 0);
+
+
+
 
     loop {
 
@@ -132,6 +130,25 @@ fn client(mut stream: Arc<TcpStream>, message: Sender<Message>) -> Result<(),()>
             });
 
         })?;
+
+
+        let cleaned_text = buffer[0..bytes_read].to_vec();
+
+       
+    
+
+
+        if cleaned_text == b"exit\r\n" {
+
+            message.send(Message::Disconnected{client: stream.clone()}).map_err(|err| {
+
+                eprintln!("ERROR: Sending message to server {err}");
+
+            })?;
+
+            return Ok(());
+
+        }
 
         if bytes_read == 0 {
 
@@ -153,13 +170,7 @@ fn client(mut stream: Arc<TcpStream>, message: Sender<Message>) -> Result<(),()>
 
     }
 
-
-
-
-
 }
-
-
 
 
 fn main() -> Result<(),()> {
