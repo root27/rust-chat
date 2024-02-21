@@ -24,7 +24,7 @@ enum Message {
 
 
 struct Client {
-    Conn: Arc<TcpStream>,
+    conn: Arc<TcpStream>,
 }
 
 
@@ -45,7 +45,7 @@ fn server(messages: Receiver<Message>){
                 let address = client.peer_addr().unwrap();
 
              
-                clients.insert(address.clone(), Client{Conn: client.clone()});
+                clients.insert(address.clone(), Client{conn: client.clone()});
 
                 println!("Client connected: {}", client.peer_addr().unwrap());
 
@@ -76,7 +76,7 @@ fn server(messages: Receiver<Message>){
 
                     if client_address != &address {
 
-                        client.Conn.as_ref().write(&data).expect("ERROR: Sending message to client");
+                        client.conn.as_ref().write(&data).expect("ERROR: Sending message to client");
 
                     }
 
@@ -92,7 +92,7 @@ fn server(messages: Receiver<Message>){
 
 
 
-fn client(mut stream: Arc<TcpStream>, message: Sender<Message>) -> Result<(),()> {
+fn client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<(),()> {
 
 
     
