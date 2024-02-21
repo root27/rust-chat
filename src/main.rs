@@ -29,10 +29,6 @@ struct Client {
 
 
 
-
-
-
-
 fn server(messages: Receiver<Message>){
 
     let mut  clients = HashMap::new();
