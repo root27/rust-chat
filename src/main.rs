@@ -21,11 +21,11 @@ const BAN_DURATION: f32 = 10.0*60.0;
 
 
 enum Message {
-    Connected{client: Arc<TcpStream>},
-    Disconnected{client: Arc<TcpStream>},
+    Connected{client: Client},
+    Disconnected{client: Client},
     NewMessage{
         data: Vec<u8>,
-        client: Arc<TcpStream>,
+        client: Client,
     }
 }
 
@@ -50,10 +50,9 @@ fn server(messages: Receiver<Message>){
 
         match msg {
 
-
             Message::Connected{client} => {
 
-                let address = client.peer_addr().unwrap();
+                let address = client.conn.peer_addr().unwrap();
 
                 let author_ip = address.ip().to_string();
 
@@ -66,53 +65,56 @@ fn server(messages: Receiver<Message>){
 
                     if now.duration_since(*ban_time).unwrap().as_secs_f32() < BAN_DURATION as f32{
 
-                        client.as_ref().write("You are banned. Try again after {now.duration_since(*ban_time).unwrap().as_secs_f32()} seconds".as_bytes()).expect("ERROR: Sending message to client");
+                        client.conn.as_ref().write("You are banned. Try again after {now.duration_since(*ban_time).unwrap().as_secs_f32()} seconds".as_bytes()).expect("ERROR: Sending message to client");
                         
 
                     } else {
 
                         bann_list.remove(&author_ip);
 
-                        clients.insert(address.clone(), Client{conn: client.clone(),
-                            last_message: SystemTime::now(),
+                        clients.insert(address.clone(), Client{conn: client.conn.clone(),
+                            last_message: now,
                             strike_count: 0
                         });
         
-                        println!("Client connected: {}", client.peer_addr().unwrap());
+                        println!("Client connected: {}", client.conn.peer_addr().unwrap());
         
 
-                        continue;
+                        
 
                     }
 
                 } 
 
-                    clients.insert(address.clone(), Client{conn: client.clone(),
-                        last_message: SystemTime::now(),
+                    clients.insert(address.clone(), Client{conn: client.conn.clone(),
+                        last_message: now,
                         strike_count: 0
                     });
 
-                    println!("Client connected: {}", client.peer_addr().unwrap());
+                    println!("Client connected: {}", client.conn.peer_addr().unwrap());
 
                 
             }
 
             Message::Disconnected{client} => {
 
-                let address = client.peer_addr().unwrap();
+                let address = client.conn.peer_addr().unwrap();
 
                
 
                 clients.remove(&address);
 
-                println!("Client disconnected: {}", client.peer_addr().unwrap());
+
+                println!("Client disconnected: {}", client.conn.peer_addr().unwrap());
+
+                client.conn.shutdown(std::net::Shutdown::Both).expect("ERROR: Shutting down connection");
 
 
             }
 
-            Message::NewMessage{data, client} => {
+            Message::NewMessage{data,mut client} => {
 
-                let address = client.peer_addr().unwrap();
+                let address = client.conn.peer_addr().unwrap();
 
 
                 let author_ip = address.ip().to_string();
@@ -121,68 +123,52 @@ fn server(messages: Receiver<Message>){
                 let now = SystemTime::now();
 
 
-
-                if clients.contains_key(&address) {
-
-                    let  client = clients.get_mut(&address).unwrap();
-                    
-                    let time_since_last_message = now.duration_since(client.last_message).unwrap().as_secs_f32();
-
-                    if time_since_last_message >= MESSAGE_RATE {
-
-                        client.strike_count += 1;
-
-                        if client.strike_count >= STRIKE_LIMIT {
-
-                            bann_list.insert(author_ip, now);
-
-                            let _ = client.conn.as_ref().write("You are banned".as_bytes());
-
-
-                            client.conn.shutdown(std::net::Shutdown::Both).expect("ERROR: Shutting down client connection");
-
-                            clients.remove(&address);
-
-                            
-
-                            println!("Client banned: {}",address);
-
-                            return;
-
-                        }
-
-                    } else {
-
-                        client.strike_count = 0;
-
-
-                        println!("Received message from client {address} : {:?}", data);
-
-
-
-
-
-                    }
+                if now.duration_since(client.last_message).unwrap().as_secs_f32() >= MESSAGE_RATE{
 
                     client.last_message = now;
 
-                }
+                    client.strike_count = 0;
+
+                    println!("Client {} send message: {:?}", address, data);
+
+                    for (client_address, client) in clients.iter() {
+
+                        if client_address != &address {
+    
+                            client.conn.as_ref().write(&data).expect("ERROR: Sending message to client");
+    
+                        }
+    
+                    }
+
+                } else {
+
+                    client.strike_count += 1;
+
+                    if client.strike_count > STRIKE_LIMIT {
+
+                        bann_list.insert(author_ip, now);
+
+                        client.conn.as_ref().write(format!("You are banned. Try again after {BAN_DURATION} seconds").as_bytes()).expect("ERROR: Sending message to client");
+
+                        client.conn.shutdown(std::net::Shutdown::Both).expect("ERROR: Shutting down connection");
 
 
-
-                println!("Received message from client {address} : {:?}", data);
-
-
-           
-                for (client_address, client) in clients.iter() {
-
-                    if client_address != &address {
-
-                        client.conn.as_ref().write(&data).expect("ERROR: Sending message to client");
 
                     }
 
+
+
+
                 }
+
+
+
+
+
+
+           
+               
 
             }
 
@@ -198,11 +184,15 @@ fn client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<(),()> {
 
 
     
-    message.send(Message::Connected{client: stream.clone()}).map_err(|err| {
+    message.send(Message::Connected{client:Client {conn:stream.clone(),
+        last_message: SystemTime::now(),
+        strike_count: 0
+    
+    }}).map_err(|err| {
 
         eprintln!("ERROR: Sending message to server {err}");
 
-       let _ =  message.send(Message::Disconnected{client: stream.clone()}).map_err(|err| {
+       let _ =  message.send(Message::Disconnected{client: Client { conn: stream.clone(), last_message: SystemTime::now(), strike_count: 0 }}).map_err(|err| {
 
             eprintln!("ERROR: Sending message to server {err}");
 
@@ -225,7 +215,11 @@ fn client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<(),()> {
 
             eprintln!("ERROR: Reading from user {err}");
 
-           let _ = message.send(Message::Disconnected{client: stream.clone()}).map_err(|err| {
+           let _ = message.send(Message::Disconnected{client: Client{
+                conn: stream.clone(),
+                last_message: SystemTime::now(),
+                strike_count: 0
+           }}).map_err(|err| {
 
                 eprintln!("ERROR: Sending message to server {err}");
 
@@ -242,7 +236,12 @@ fn client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<(),()> {
 
         if cleaned_text == b"exit\r\n" {
 
-            message.send(Message::Disconnected{client: stream.clone()}).map_err(|err| {
+            message.send(Message::Disconnected{client: Client {
+                conn: stream.clone(),
+                last_message: SystemTime::now(),
+                strike_count: 0
+            
+            }}).map_err(|err| {
 
                 eprintln!("ERROR: Sending message to server {err}");
 
@@ -254,7 +253,11 @@ fn client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<(),()> {
 
         if bytes_read == 0 {
 
-            message.send(Message::Disconnected{client: stream.clone()}).map_err(|err| {
+            message.send(Message::Disconnected{client: Client{
+                conn: stream.clone(),
+                last_message: SystemTime::now(),
+                strike_count: 0
+            }}).map_err(|err| {
 
                 eprintln!("ERROR: Sending message to server {err}");
 
@@ -264,7 +267,11 @@ fn client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<(),()> {
 
         }
 
-        message.send(Message::NewMessage{data: buffer[0..bytes_read].to_vec(), client: stream.clone()}).map_err(|err| {
+        message.send(Message::NewMessage{data: buffer[0..bytes_read].to_vec(), client: Client{
+            conn: stream.clone(),
+            last_message: SystemTime::now(),
+            strike_count: 0
+        }}).map_err(|err| {
 
             eprintln!("ERROR: Sending message to server {err}");
 
