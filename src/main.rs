@@ -163,7 +163,7 @@ fn server(messages: Receiver<Message>){
 
                         let _ = writeln!(client.conn.as_ref(),"You are banned for {BAN_DURATION:?} seconds").expect("ERROR: Sending message to client");
 
-                        client.conn.shutdown(std::net::Shutdown::Both).expect("ERROR: Shutting down connection");
+                        client.conn.shutdown(Both).expect("ERROR: Shutting down connection");
 
 
 
