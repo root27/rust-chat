@@ -10,6 +10,13 @@ use std::sync::mpsc::{channel, Sender, Receiver};
 
 use std::sync::Arc;
 
+use std::time::{SystemTime, Duration};
+
+
+
+const MESSAGE_RATE: f32 = 1.0;
+const STRIKE_LIMIT: u8 = 3;
+const BAN_DURATION: f32 = 10.0*60.0;
 
 
 
@@ -25,12 +32,16 @@ enum Message {
 
 struct Client {
     conn: Arc<TcpStream>,
+    last_message: SystemTime,
+    strike_count: u8
 }
 
 
 fn server(messages: Receiver<Message>){
 
     let mut  clients = HashMap::new();
+
+    let mut bann_list = HashMap::new();
 
 
     loop {
@@ -44,16 +55,53 @@ fn server(messages: Receiver<Message>){
 
                 let address = client.peer_addr().unwrap();
 
-             
-                clients.insert(address.clone(), Client{conn: client.clone()});
+                let author_ip = address.ip().to_string();
 
-                println!("Client connected: {}", client.peer_addr().unwrap());
+                let now = SystemTime::now();
 
+
+                if bann_list.contains_key(&author_ip) {
+
+                    let ban_time = bann_list.get(&author_ip).unwrap();
+
+                    if now.duration_since(*ban_time).unwrap().as_secs_f32() < BAN_DURATION as f32{
+
+                        client.as_ref().write("You are banned. Try again after {now.duration_since(*ban_time).unwrap().as_secs_f32()} seconds".as_bytes()).expect("ERROR: Sending message to client");
+                        
+
+                    } else {
+
+                        bann_list.remove(&author_ip);
+
+                        clients.insert(address.clone(), Client{conn: client.clone(),
+                            last_message: SystemTime::now(),
+                            strike_count: 0
+                        });
+        
+                        println!("Client connected: {}", client.peer_addr().unwrap());
+        
+
+                        continue;
+
+                    }
+
+                } 
+
+                    clients.insert(address.clone(), Client{conn: client.clone(),
+                        last_message: SystemTime::now(),
+                        strike_count: 0
+                    });
+
+                    println!("Client connected: {}", client.peer_addr().unwrap());
+
+                
             }
 
             Message::Disconnected{client} => {
 
                 let address = client.peer_addr().unwrap();
+
+               
 
                 clients.remove(&address);
 
@@ -65,6 +113,60 @@ fn server(messages: Receiver<Message>){
             Message::NewMessage{data, client} => {
 
                 let address = client.peer_addr().unwrap();
+
+
+                let author_ip = address.ip().to_string();
+
+
+                let now = SystemTime::now();
+
+
+
+                if clients.contains_key(&address) {
+
+                    let  client = clients.get_mut(&address).unwrap();
+                    
+                    let time_since_last_message = now.duration_since(client.last_message).unwrap().as_secs_f32();
+
+                    if time_since_last_message >= MESSAGE_RATE {
+
+                        client.strike_count += 1;
+
+                        if client.strike_count >= STRIKE_LIMIT {
+
+                            bann_list.insert(author_ip, now);
+
+                            let _ = client.conn.as_ref().write("You are banned".as_bytes());
+
+
+                            client.conn.shutdown(std::net::Shutdown::Both).expect("ERROR: Shutting down client connection");
+
+                            clients.remove(&address);
+
+                            
+
+                            println!("Client banned: {}",address);
+
+                            return;
+
+                        }
+
+                    } else {
+
+                        client.strike_count = 0;
+
+
+                        println!("Received message from client {address} : {:?}", data);
+
+
+
+
+
+                    }
+
+                    client.last_message = now;
+
+                }
 
 
 
