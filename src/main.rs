@@ -6,6 +6,8 @@ use std::io::Read;
 
 use std::thread;
 
+use std::net::Shutdown::Both;
+
 use std::sync::mpsc::{channel, Sender, Receiver};
 
 use std::sync::Arc;
@@ -14,9 +16,9 @@ use std::time::{SystemTime, Duration};
 
 
 
-const MESSAGE_RATE: f32 = 1.0;
+const MESSAGE_RATE: Duration = Duration::from_secs(1);
 const STRIKE_LIMIT: u8 = 3;
-const BAN_DURATION: f32 = 10.0*60.0;
+const BAN_DURATION: Duration = Duration::from_secs(10*60);
 
 
 
@@ -63,10 +65,15 @@ fn server(messages: Receiver<Message>){
 
                     let ban_time = bann_list.get(&author_ip).unwrap();
 
-                    if now.duration_since(*ban_time).unwrap().as_secs_f32() < BAN_DURATION as f32{
+                    if  now.duration_since(*ban_time).unwrap().as_secs_f32() < BAN_DURATION.as_secs_f32(){
 
-                        client.conn.as_ref().write("You are banned. Try again after {now.duration_since(*ban_time).unwrap().as_secs_f32()} seconds".as_bytes()).expect("ERROR: Sending message to client");
-                        
+                        let secs = (BAN_DURATION -  now.duration_since(*ban_time).unwrap()).as_secs_f32();
+
+
+                        println!("Client try to connect but is banned for {secs} seconds");
+
+
+                        let _ = writeln!(client.conn.as_ref(), "You are banned. Try again after {secs} seconds").expect("ERROR: Sending message to client");
 
                     } else {
 
@@ -107,7 +114,7 @@ fn server(messages: Receiver<Message>){
 
                 println!("Client disconnected: {}", client.conn.peer_addr().unwrap());
 
-                client.conn.shutdown(std::net::Shutdown::Both).expect("ERROR: Shutting down connection");
+                client.conn.shutdown(Both).expect("ERROR: Shutting down connection");
 
 
             }
@@ -123,7 +130,9 @@ fn server(messages: Receiver<Message>){
                 let now = SystemTime::now();
 
 
-                if now.duration_since(client.last_message).unwrap().as_secs_f32() >= MESSAGE_RATE{
+                println!("{:?}",now.duration_since(client.last_message).unwrap().as_secs_f32());
+
+                if now.duration_since(client.last_message).unwrap().as_secs_f32() <= MESSAGE_RATE.as_secs_f32() {
 
                     client.last_message = now;
 
@@ -145,11 +154,14 @@ fn server(messages: Receiver<Message>){
 
                     client.strike_count += 1;
 
-                    if client.strike_count > STRIKE_LIMIT {
+                    if client.strike_count >= STRIKE_LIMIT {
 
                         bann_list.insert(author_ip, now);
 
-                        client.conn.as_ref().write(format!("You are banned. Try again after {BAN_DURATION} seconds").as_bytes()).expect("ERROR: Sending message to client");
+
+                        clients.remove(&address);
+
+                        let _ = writeln!(client.conn.as_ref(),"You are banned for {BAN_DURATION:?} seconds").expect("ERROR: Sending message to client");
 
                         client.conn.shutdown(std::net::Shutdown::Both).expect("ERROR: Shutting down connection");
 
@@ -157,18 +169,8 @@ fn server(messages: Receiver<Message>){
 
                     }
 
-
-
-
                 }
-
-
-
-
-
-
-           
-               
+   
 
             }
 
