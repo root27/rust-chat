@@ -123,7 +123,6 @@ fn server(messages: Receiver<Message>){
                 let address = client.peer_addr().unwrap();
 
                
-
                 let client_struct = clients.get_mut(&address).unwrap();
 
 
@@ -244,12 +243,7 @@ fn client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<(),()> {
 
             eprintln!("ERROR: Reading from user {err}");
 
-           let _ = message.send(Message::Disconnected{client: stream.clone()}).map_err(|err| {
-
-                eprintln!("ERROR: Sending message to server {err}");
-
-            });
-
+          
         })?;
 
 
