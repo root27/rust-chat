@@ -80,6 +80,8 @@ fn server(messages: Receiver<Message>){
 
                         let _ = writeln!(client.as_ref(), "You are banned. Try again after {left_secs} seconds").expect("ERROR: Sending message to client");
 
+                        let _ = client.as_ref().shutdown(Both).expect("ERROR: Shutting down connection");
+
                     } else {
 
                         bann_list.remove(&author_ip);
@@ -120,7 +122,15 @@ fn server(messages: Receiver<Message>){
 
             Message::Disconnected{client} => {
 
-                let address = client.peer_addr().unwrap();
+                let address = client.peer_addr();
+
+                if address.is_err() {
+
+                    continue;
+
+                };
+
+                let address = address.unwrap();
 
                
                 let client_struct = clients.get_mut(&address).unwrap();
@@ -189,7 +199,7 @@ fn server(messages: Receiver<Message>){
 
                         let _ = writeln!(client_struct.conn.as_ref(),"You are banned for {BAN_DURATION:?} seconds").expect("ERROR: Sending message to client");
 
-                        client_struct.conn.as_ref().shutdown(Both).expect("ERROR: Shutting down connection");
+                       let _ =  client.as_ref().shutdown(Both).expect("ERROR: Shutting down connection");
 
                         clients.remove(&address);
 
@@ -290,7 +300,7 @@ fn client(stream: Arc<TcpStream>, message: Sender<Message>) -> Result<(),()> {
 
 fn main() -> Result<(),()> {
 
-        let address = "127.0.0.1:3030";
+        let address = "0.0.0.0:3030";
 
 
         let listener = TcpListener::bind(address).map_err(|error| {
