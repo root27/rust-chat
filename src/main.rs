@@ -91,6 +91,8 @@ fn server(messages: Receiver<Message>){
 
                     }
 
+                    return;
+
                 } 
 
                     clients.insert(address.clone(), Client{conn: client.conn.clone(),
@@ -130,9 +132,12 @@ fn server(messages: Receiver<Message>){
                 let now = SystemTime::now();
 
 
-                println!("{:?}",now.duration_since(client.last_message).unwrap().as_secs_f32());
 
-                if now.duration_since(client.last_message).unwrap().as_secs_f32() <= MESSAGE_RATE.as_secs_f32() {
+                let secs = now.duration_since(client.last_message).unwrap().as_secs_f32();
+
+                
+
+                if secs > MESSAGE_RATE.as_secs_f32() {
 
                     client.last_message = now;
 
