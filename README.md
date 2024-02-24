@@ -4,9 +4,9 @@ This is very simple chat server written in Rust.
 
 ## Quick Start
 
-'''bash
+’’’bash
 
 cargo run
 
-'''
+’’’
 
