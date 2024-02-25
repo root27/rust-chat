@@ -10,3 +10,7 @@ cargo run
 
 ```
 
+## LICENSE
+
+[MIT](LICENSE)
+
