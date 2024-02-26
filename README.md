@@ -2,6 +2,8 @@
 
 This is very simple chat server written in Rust.
 
+---
+
 ## Quick Start
 
 ```bash
@@ -9,6 +11,8 @@ This is very simple chat server written in Rust.
 cargo run
 
 ```
+
+---
 
 ## LICENSE
 
